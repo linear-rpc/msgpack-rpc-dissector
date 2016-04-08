@@ -14,7 +14,7 @@ do
     f.params_field = ProtoField.string("msgpack-rpc.params", "Params")
     f.error_field = ProtoField.string("msgpack-rpc.error", "Error")
     f.result_field = ProtoField.string("msgpack-rpc.result", "Result")
-    
+
     local mp = require "MessagePack"
 
     function table_print(tt)
@@ -26,7 +26,7 @@ do
             end
             len = len + 1
         end
-    
+
         local sb = {}
         if is_array then
             table.insert(sb, "[")
@@ -52,7 +52,7 @@ do
         end
         return table.concat(sb)
     end
-    
+
     function stringify(obj)
         if "nil" == type(obj) then
             return tostring(nil)
@@ -93,61 +93,12 @@ do
         return false
     end
 
-    function contains(port)
-        for i, p in ipairs(PORTS) do
-            if p == port then
-                return true
-            end
-        end
-        return false
-    end
- 
     local str
     local substr
 
-    local tcp_srcport_field = Field.new("tcp.srcport")
-    local tcp_dstport_field = Field.new("tcp.dstport")
-
-    local ws_mask_field = Field.new("websocket.mask")
-    local ws_payload_binary_field = Field.new("websocket.payload.binary")
-    local ws_payload_binary_unmask_field = Field.new("websocket.payload.binary_unmask")
-    
     function msgpack_rpc_proto.dissector(tvb, pinfo, tree)
-        local proto_name = "MessagePack-RPC over WebSocket"
-
-        local tcp_srcport = tcp_srcport_field()
-        local tcp_dstport = tcp_dstport_field()
-        if not tcp_srcport or not tcp_dstport then
-            -- not exist
-            return
-        end
-        if not contains(tcp_srcport.value) and not contains(tcp_dstport.value) then
-            -- not specified port
-            return
-        end
-
-        local ws_mask = ws_mask_field()
-        if not ws_mask then
-            -- not websocket
-            return
-        end
-
-        local b
-        if ws_mask.value then
-            local ws_payload_binary_unmask = ws_payload_binary_unmask_field()
-            if not ws_payload_binary_unmask then
-                -- not exist
-                return
-            end
-            b = ws_payload_binary_unmask.range:bytes()
-        else
-            local ws_payload_binary = ws_payload_binary_field()
-            if not ws_payload_binary then
-                -- not exist
-                return
-            end
-            b = ws_payload_binary.range:bytes()
-        end
+        local proto_name = "MessagePack-RPC"
+        local b = tvb():bytes()
 
         str = ""
         for i = 0, b:len() - 1 do
@@ -180,7 +131,7 @@ do
 
         local subtree = tree:add(msgpack_rpc_proto, tvb(), "MessagePack-RPC Protocol")
         -- type
-        if pair[1][2] == 0 then            -- request
+        if pair[1][2] == 0 then            -- requiest
             subtree:add(f.type_field, tvb(pair[1][1], pair[2][1] - pair[1][1]), pair[1][2]):append_text(" (Request)")
             -- msgid
             if not is_number(pair[2][2]) then
@@ -225,6 +176,9 @@ do
         end
         pinfo.cols.protocol = proto_name
     end
-    
-    register_postdissector(msgpack_rpc_proto)
+
+    tcp_table = DissectorTable.get("tcp.port")
+    for i, port in ipairs(PORTS) do
+        tcp_table:add(port, msgpack_rpc_proto)
+    end
 end

@@ -4,7 +4,20 @@
 --
 
 do
-    local PORTS = {9003, 37800} -- if you want to change port, modify this variable.
+    if set_plugin_info then
+        local my_info = {
+            version     = "1.1.0",                                               -- required
+            description = "MessagePack-RPC Dissector",                           -- optional
+            author      = "Sony Corporation",                                    -- optional
+            repository  = "https://github.com/linear-rpc/msgpack-rpc-dissector", -- optional
+        }
+        set_plugin_info(my_info)
+    end
+
+    local current_settings = {
+        tcp_ports = "9003-9004,37800",
+        ws_ports  = "9005-9009",
+    }
 
     msgpack_rpc_proto = Proto("msgpack-rpc", "MessagePack-RPC")
     local f = msgpack_rpc_proto.fields
@@ -14,7 +27,38 @@ do
     f.params_field = ProtoField.string("msgpack-rpc.params", "Params")
     f.error_field = ProtoField.string("msgpack-rpc.error", "Error")
     f.result_field = ProtoField.string("msgpack-rpc.result", "Result")
-    
+    msgpack_rpc_proto.prefs.tcp_ports = Pref.range(
+        "TCP Port numbers",
+        current_settings.tcp_ports,
+        "The TCP port numbers for MessagePack-RPC",
+        65535
+    )
+    msgpack_rpc_proto.prefs.ws_ports = Pref.range(
+        "WebSocket Port numbers",
+        current_settings.ws_ports,
+        "The WebSocket port numbers for MessagePack-RPC",
+        65535
+    )
+
+    function msgpack_rpc_proto.prefs_changed()
+        if current_settings.tcp_ports ~= msgpack_rpc_proto.prefs.tcp_ports then
+            -- remove old one
+            DissectorTable.get("tcp.port"):remove(current_settings.tcp_ports, msgpack_rpc_proto)
+            -- set our new default
+            current_settings.tcp_ports = msgpack_rpc_proto.prefs.tcp_ports
+            -- add new one
+            DissectorTable.get("tcp.port"):add(current_settings.tcp_ports, msgpack_rpc_proto)
+        end
+        if current_settings.ws_ports ~= msgpack_rpc_proto.prefs.ws_ports then
+            -- remove old one
+            DissectorTable.get("ws.port"):remove(current_settings.ws_ports, msgpack_rpc_proto)
+            -- set our new default
+            current_settings.ws_ports = msgpack_rpc_proto.prefs.ws_ports
+            -- add new one
+            DissectorTable.get("ws.port"):add(current_settings.ws_ports, msgpack_rpc_proto)
+        end
+    end
+
     local mp = require "MessagePack"
 
     function table_print(tt)
@@ -26,7 +70,7 @@ do
             end
             len = len + 1
         end
-    
+
         local sb = {}
         if is_array then
             table.insert(sb, "[")
@@ -52,7 +96,7 @@ do
         end
         return table.concat(sb)
     end
-    
+
     function stringify(obj)
         if "nil" == type(obj) then
             return tostring(nil)
@@ -92,14 +136,14 @@ do
         end
         return false
     end
- 
+
     local str
     local substr
-    
+
     function msgpack_rpc_proto.dissector(tvb, pinfo, tree)
         local proto_name = "MessagePack-RPC"
         local b = tvb():bytes()
-    
+
         str = ""
         for i = 0, b:len() - 1 do
             str = str .. string.char(b:get_index(i))
@@ -176,9 +220,7 @@ do
         end
         pinfo.cols.protocol = proto_name
     end
-    
-    tcp_table = DissectorTable.get("tcp.port")
-    for i, port in ipairs(PORTS) do
-        tcp_table:add(port, msgpack_rpc_proto)
-    end
+
+    DissectorTable.get("tcp.port"):add(current_settings.tcp_ports, msgpack_rpc_proto)
+    DissectorTable.get("ws.port"):add(current_settings.ws_ports, msgpack_rpc_proto)
 end
