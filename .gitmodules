@@ -1,3 +1,3 @@
 [submodule "deps/lua-MessagePack"]
 	path = deps/lua-MessagePack
-	url = https://github.com/fperrad/lua-MessagePack.git
+	url = https://framagit.org/fperrad/lua-MessagePack.git
